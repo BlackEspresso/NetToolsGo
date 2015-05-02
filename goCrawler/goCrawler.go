@@ -102,8 +102,12 @@ func fetchSites(links map[string]bool, delayMs int) {
 			fmt.Printf("skipping: " + err.Error())
 			continue
 		}
+		if ok, _ := PathExists("./sites/"); !ok {
+			os.Mkdir("./sites", 0777)
+		}
 
-		f, _ := os.Create("./sites/" + strconv.FormatInt(ht.DoneTime, 10) + ".httpt")
+		f, err := os.Create("./sites/" + strconv.FormatInt(ht.DoneTime, 10) + ".httpt")
+		checkerror(err)
 		defer f.Close()
 
 		content, err := json.Marshal(ht)
@@ -118,6 +122,17 @@ func fetchSites(links map[string]bool, delayMs int) {
 		findLinks(urlStr, doc, links)
 		time.Sleep(time.Duration(delayMs) * time.Millisecond)
 	}
+}
+
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 func getNextSite(links map[string]bool) (string, bool) {
