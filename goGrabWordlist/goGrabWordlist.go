@@ -2,11 +2,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,6 +13,44 @@ import (
 	"sort"
 	"strings"
 )
+
+func main() {
+	dirStr := flag.String("dir", "", "directory")
+	email := flag.String("email", "", "send mail if done")
+	minLengthFlag := flag.Int("minlength", 3, "minimum word length")
+	filterWordlist := flag.String("filterlist", "filter.wl", "avoid these words")
+	tolowercase := flag.Bool("tolower", true, "to lowercase")
+	flag.Parse()
+
+	if *dirStr == "" {
+		log.Fatal("no directory provided.")
+	}
+
+	filterWordsContent, err := ioutil.ReadFile(*filterWordlist)
+	checkerror(err)
+
+	filterWords := strings.Split(string(filterWordsContent), "\n")
+	filterList := make([]string, len(filterWords))
+	for _, word := range filterWords {
+		filterList = append(filterList, strings.TrimSpace(word))
+	}
+
+	words := make(map[string]int)
+	readFiles(*dirStr, words, *minLengthFlag, filterList, *tolowercase)
+
+	list := sortMapByValue(words)
+
+	msg := ""
+	for _, v := range list {
+		msg += v.Key + "\n"
+	}
+
+	fmt.Print(msg)
+
+	if *email != "" {
+		sendmail(*email, "grabwordlist - "+*dirStr, msg)
+	}
+}
 
 type HttpTransaction struct {
 	Response     http.Response
@@ -91,15 +127,6 @@ func toValidSubdomainName(t string) string {
 	return newname
 }
 
-func toValidFileName(t string) string {
-	filename := strings.Replace(t, "https", "", -1)
-	filename = strings.Replace(filename, "http", "_", -1)
-	filename = strings.Replace(filename, ":", "", -1)
-	filename = strings.Replace(filename, ".", "_", -1)
-	filename = strings.Replace(filename, "/", "", -1)
-	return filename
-}
-
 func containsString(text string, arr []string) bool {
 	for _, v := range arr {
 		if v == text {
@@ -140,24 +167,29 @@ func splitWordByUpperCase(word string) []string {
 	return strings.Split(newWord, "\n")
 }
 
-func findWords(doc *goquery.Document, foundwords map[string]int) {
-	text := doc.Find("*").Not("script, style, head, noscript").Text()
-
+func findWords(text string, foundwords map[string]int, minLengthWord int, filterWords []string, tolowercase bool) {
 	words := splitTextBy(text,
-		[]string{",", ".", "\n", "\t", " ", "\r", "?", "!", "(", ")", "{", "}"})
+		[]string{",", ".", "\n", "\t", " ", "\r", "?", "!", "(", ")", "{", "}", "=",
+			"[", "]", "\"", "/"})
 
 	for _, word := range words {
 		word = strings.TrimSpace(word)
 		word = toValidSubdomainName(word)
 		splitted := splitWordByUpperCase(word)
 		for _, spWord := range splitted {
+			spWord = strings.TrimSpace(spWord)
+			spWord = strings.ToLower(spWord)
+
 			if spWord == "" {
 				continue
 			}
-			if len(spWord) <= 1 {
+			if len(spWord) <= 1 || len(spWord) < minLengthWord {
 				continue
 			}
 			if len(spWord) >= 25 {
+				continue
+			}
+			if containsString(spWord, filterWords) {
 				continue
 			}
 			i, ok := foundwords[spWord]
@@ -170,7 +202,7 @@ func findWords(doc *goquery.Document, foundwords map[string]int) {
 	}
 }
 
-func readFiles(dir string, words map[string]int) {
+func readFiles(dir string, words map[string]int, minLengthWord int, filterWords []string, tolowercase bool) {
 	files, err := ioutil.ReadDir(dir)
 	checkerror(err)
 
@@ -185,38 +217,7 @@ func readFiles(dir string, words map[string]int) {
 		ht := HttpTransaction{}
 		dec.Decode(&ht)
 
-		buf := bytes.NewBufferString(ht.ResponseBody)
-		doc, err := goquery.NewDocumentFromReader(buf)
-		if err != nil {
-			continue
-		}
-		findWords(doc, words)
-	}
-}
-
-func main() {
-	dirStr := flag.String("dir", "", "directory")
-	email := flag.String("email", "", "send mail if done")
-	flag.Parse()
-
-	if *dirStr == "" {
-		log.Fatal("no directory provided.")
-	}
-
-	words := make(map[string]int)
-	readFiles(*dirStr, words)
-
-	list := sortMapByValue(words)
-
-	msg := ""
-	for _, v := range list {
-		msg += v.Key + "\n"
-	}
-
-	fmt.Print(msg)
-
-	if *email != "" {
-		sendmail(*email, "grabwordlist - "+*dirStr, msg)
+		findWords(ht.ResponseBody, words, minLengthWord, filterWords, tolowercase)
 	}
 }
 
