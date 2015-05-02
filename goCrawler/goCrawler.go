@@ -51,6 +51,7 @@ func NewFromResponse(res *http.Response, reqBody io.Reader, donetime int64, dura
 
 func main() {
 	urlFlag := flag.String("url", "", "url, e.g. http://www.google.com")
+	delayFlag := flag.Int("delay", 1000, "delay, in milliseconds, default is 1000ms=1sec")
 	flag.Parse()
 
 	if *urlFlag == "" {
@@ -62,7 +63,7 @@ func main() {
 
 	links := make(map[string]bool)
 	links[*urlFlag] = false // startsite
-	fetchSites(links)
+	fetchSites(links, *delayFlag)
 }
 
 func DoGETTransaction(url string) (*HttpTransaction, error) {
@@ -86,7 +87,7 @@ func DoGETTransaction(url string) (*HttpTransaction, error) {
 	return &ht, nil
 }
 
-func fetchSites(links map[string]bool) {
+func fetchSites(links map[string]bool, delayMs int) {
 	for {
 		urlStr, found := getNextSite(links)
 		if !found {
@@ -115,6 +116,7 @@ func fetchSites(links map[string]bool) {
 		checkerror(err)
 		// parse content
 		findLinks(urlStr, doc, links)
+		time.Sleep(time.Duration(delayMs) * time.Millisecond)
 	}
 }
 
