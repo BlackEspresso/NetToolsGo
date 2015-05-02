@@ -1,0 +1,6 @@
+---
+smtp:
+  username: example@googlemail.com
+  password: passwordhere
+  servername: smtp.gmail.com
+  port: 587
